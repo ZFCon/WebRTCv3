@@ -30,12 +30,99 @@ const iceServers = {
 }
 
 const streamConstrains = {
-    video: true,
+    // video: true,
     audio: true
 }
 
+var socket = io.connect('http://127.0.0.1:4000')
+
 callbtn.onclick = () => {
+    roomNumber = chatRoom.value
+    socket.emit('create or join', roomNumber)
+    isCaller = true
+}
+
+socket.on('created', room => {
     navigator.mediaDevices.getUserMedia(streamConstrains).then(stream => {
+        localStream = stream
         localVideo.srcObject = stream
+        socket.emit('ready', roomNumber)
     })
+})
+
+
+socket.on('ready', () => {
+    if(isCaller) {
+        rtcPeerConnection = new RTCPeerConnection(iceServers)
+        rtcPeerConnection.onicecandidate = onIceCandidate
+        rtcPeerConnection.ontrack = onAddStream
+        rtcPeerConnection.addTrack(localStream.getTracks()[0], localStream)
+        rtcPeerConnection.addTrack(localStream.getTracks()[1], localStream)
+        rtcPeerConnection.createOffer().then(sessionDescription => {
+            rtcPeerConnection.setLocalDescription(sessionDescription)
+            socket.emit('offer', {
+                type: 'offer',
+                sdp: sessionDescription,
+                room: roomNumber
+            })
+        }).catch(err => {
+            console.log(err)
+        })
+
+
+    }
+})
+
+socket.on('offer', event => {
+    if(!isCaller) {
+        rtcPeerConnection = new RTCPeerConnection(iceServers)
+        rtcPeerConnection.onicecandidate = onIceCandidate
+        rtcPeerConnection.ontrack = onAddStream
+        rtcPeerConnection.addTrack(localStream.getTracks()[0], localStream)
+        rtcPeerConnection.addTrack(localStream.getTracks()[1], localStream)
+        rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(event))
+        rtcPeerConnection.createAnswer().then(sessionDescription => {
+            rtcPeerConnection.setLocalDescription(sessionDescription)
+            socket.emit('answer', {
+                type: 'answer',
+                sdp: sessionDescription,
+                room: roomNumber
+            })
+        }).catch(err => {
+            console.log(err)
+        })
+
+
+    }
+})
+
+socket.on('answer', event => {
+    rtcPeerConnection.setRemoteDescription(new RTCSessionDescription(event))
+})
+
+socket.on('candidate', event => {
+    const candidate = new RTCIceCandidate({
+        sdpMLineIndex: event.label,
+        candidate: event.candidate,
+    })
+    rtcPeerConnection.addIceCandidate(candidate)
+})
+
+function onAddStream(event) {
+    remoteVideo.srcObject = event.streams[0]
+    remoteStream.srcObject = event.streams[0]
+}
+
+function onIceCandidate(event) {
+    if(event.candidate) {
+        console.log('sending ice candidate', event.candidate)
+        socket.emit('candidate', {
+            type: 'candidate',
+            label: event.candidate.sdpMLineIndox,
+            id: event.candidate.sdpMid,
+            candidate: event.candidate.candidate,
+            room: roomNumber,
+
+        })
+    }
 }
