@@ -44,7 +44,7 @@ io.on('connection', socket => {
     socket.on('offer', event => {
         socket.broadcast.to(event.room).emit('offer', event.sdp)
     })
-    socket.on('offer', event => {
+    socket.on('ready', event => {
         socket.broadcast.to(event.room).emit('ready', event.sdp)
     })
     
